@@ -24,8 +24,9 @@ from music_utils import *
 def __parse_midi(data_fn):
     # Parse the MIDI data for separate melody and accompaniment parts.
     midi_data = converter.parse(data_fn)
+
     # Get melody part, compress into single voice.
-    melody_stream = midi_data[5]     # For Metheny piece, Melody is Part #5.
+    melody_stream = midi_data[0]     # For the Hadyn piano piece, Melody is Part #0.
     melody1, melody2 = melody_stream.getElementsByClass(stream.Voice)
     for j in melody2:
         melody1.insert(j.offset, j)
@@ -35,16 +36,15 @@ def __parse_midi(data_fn):
         if i.quarterLength == 0.0:
             i.quarterLength = 0.25
 
-    # Change key signature to adhere to comp_stream (1 sharp, mode = major).
-    # Also add Electric Guitar. 
-    melody_voice.insert(0, instrument.ElectricGuitar())
-    melody_voice.insert(0, key.KeySignature(sharps=1))
+    # Use its original keys
+    melody_voice.insert(0, instrument.Piano())
+    melody_voice.insert(0, key.Key('C'))
+    melody_voice.insert(0, key.Key('E-'))
+    melody_voice.insert(0, key.Key('E-'))
+    melody_voice.insert(0, key.Key('C'))
 
-    # The accompaniment parts. Take only the best subset of parts from
-    # the original data. Maybe add more parts, hand-add valid instruments.
-    # Should add least add a string part (for sparse solos).
-    # Verified are good parts: 0, 1, 6, 7 '''
-    partIndices = [0, 1, 6, 7]
+    # Add all accompany parts
+    partIndices = [1, 2, 3]
     comp_stream = stream.Voice()
     comp_stream.append([j.flat for i, j in enumerate(midi_data) 
         if i in partIndices])
@@ -59,7 +59,7 @@ def __parse_midi(data_fn):
     # Extract solo stream, assuming you know the positions ..ByOffset(i, j).
     # Note that for different instruments (with stream.flat), you NEED to use
     # stream.Part(), not stream.Voice().
-    # Accompanied solo is in range [478, 548)
+    # While 200 is an arbitrary lower bound, 480 is the highest frequency in the piece.
     solo_stream = stream.Voice()
     for part in full_stream:
         curr_part = stream.Part()
@@ -67,7 +67,7 @@ def __parse_midi(data_fn):
         curr_part.append(part.getElementsByClass(tempo.MetronomeMark))
         curr_part.append(part.getElementsByClass(key.KeySignature))
         curr_part.append(part.getElementsByClass(meter.TimeSignature))
-        curr_part.append(part.getElementsByOffset(476, 548, 
+        curr_part.append(part.getElementsByOffset(200, 480, 
                                                   includeEndBoundary=True))
         cp = curr_part.flat
         solo_stream.insert(cp)
@@ -78,6 +78,25 @@ def __parse_midi(data_fn):
     melody_stream = solo_stream[-1]
     measures = OrderedDict()
     offsetTuples = [(int(n.offset / 4), n) for n in melody_stream]
+    
+    # Need to make the following changes to avoid 0 chords in an array
+    '''
+    2 (0, <music21.meter.TimeSignature 3/4>)
+
+    34 (180, <music21.key.Key of E- major>) remove~!!
+    35 (180, <music21.key.Key of E- major>)
+    36 (186, <music21.key.Key of E- major>)
+    37 (186, <music21.key.Key of E- major>)
+
+    38 (199<music21.key.Key of C major>)
+    39 (199music21.key.Key of C major>)
+    '''
+    offsetTuples[2] = (0, offsetTuples[2][1])
+    offsetTuples[38] = (199, offsetTuples[38][1])
+    offsetTuples[39] = (199, offsetTuples[39][1])
+    del offsetTuples[36]
+    del offsetTuples[34]
+    
     measureNum = 0 # for now, don't use real m. nums (119, 120)
     for key_x, group in groupby(offsetTuples, lambda x: x[0]):
         measures[measureNum] = [n[1] for n in group]
@@ -85,10 +104,24 @@ def __parse_midi(data_fn):
 
     # Get the stream of chords.
     # offsetTuples_chords: group chords by measure number.
-    chordStream = solo_stream[0]
+    chordStream = solo_stream[1]
     chordStream.removeByClass(note.Rest)
     chordStream.removeByClass(note.Note)
     offsetTuples_chords = [(int(n.offset / 4), n) for n in chordStream]
+    
+    # Need to make the following changes to avoid 0 chords in an array
+    '''
+    2 (0, <music21.meter.TimeSignature 3/4>)
+    29 (183, <music21.key.Key of E- major>)
+    30 (183, <music21.key.Key of E- major>)
+    34 (189, <music21.key.Key of E- major>)
+    35 (189, <music21.key.Key of E- major>)
+    '''
+    offsetTuples_chords[2] = (0, offsetTuples[2][1])
+    offsetTuples_chords[29] = (183, offsetTuples[29][1])
+    offsetTuples_chords[30] = (183, offsetTuples[30][1])
+    offsetTuples_chords[34] = (189, offsetTuples[34][1])
+    offsetTuples_chords[35] = (189, offsetTuples[35][1])
 
     # Generate the chord structure. Use just track 1 (piano) since it is
     # the only instrument that has chords. 
@@ -99,14 +132,9 @@ def __parse_midi(data_fn):
         chords[measureNum] = [n[1] for n in group]
         measureNum += 1
 
-    # Fix for the below problem.
-    #   1) Find out why len(measures) != len(chords).
-    #   ANSWER: resolves at end but melody ends 1/16 before last measure so doesn't
-    #           actually show up, while the accompaniment's beat 1 right after does.
-    #           Actually on second thought: melody/comp start on Ab, and resolve to
-    #           the same key (Ab) so could actually just cut out last measure to loop.
-    #           Decided: just cut out the last measure. 
-    del chords[len(chords) - 1]
+    # Trim the measures to have an equal length with chords.
+    for i in range(len(measures) - len(chords)):
+        del measures[len(measures) - 1]
     assert len(chords) == len(measures)
 
     return measures, chords
@@ -115,15 +143,32 @@ def __parse_midi(data_fn):
 def __get_abstract_grammars(measures, chords):
     # extract grammars
     abstract_grammars = []
-    for ix in range(1, len(measures)):
+    for ix in range(0, len(measures) - 1):
         m = stream.Voice()
+
+        # Avoid repetitions that results in an insersion error
+        testSet = set()
         for i in measures[ix]:
+            testStr = str(i.offset) + str(i)
+            if testStr in testSet:
+                continue
             m.insert(i.offset, i)
+            testSet.add(testStr)
+            
         c = stream.Voice()
+        testSet = set()
         for j in chords[ix]:
+            testStr = str(j.offset) + str(j)
+            if testStr in testSet:
+                continue
             c.insert(j.offset, j)
+            testSet.add(testStr)
+            
         parsed = parse_melody(m, c)
-        abstract_grammars.append(parsed)
+
+        # Ignore zero-length measure / chords
+        if parsed != None:
+            abstract_grammars.append(parsed)
 
     return abstract_grammars
 

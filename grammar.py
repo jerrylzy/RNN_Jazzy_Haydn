@@ -132,6 +132,9 @@ def parse_melody(fullMeasureNotes, fullMeasureChords):
     measure.removeByNotOfClass([note.Note, note.Rest])
     chords.removeByNotOfClass([chord.Chord])
 
+    if len(measure) == 0 or len(chords) == 0:
+        return None
+
     # Information for the start of the measure.
     # 1) measureStartTime: the offset for measure's start, e.g. 476.0.
     # 2) measureStartOffset: how long from the measure start to the first element.

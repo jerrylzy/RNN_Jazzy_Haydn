@@ -84,9 +84,3 @@ def sequence_to_matrix(sequence, values_indices):
         if (not value in values_indices): print(value)
         x[0, t, values_indices[value]] = 1.
     return x
-
-def one_hot(x):
-    x = K.argmax(x)
-    x = tf.one_hot(x, 78) 
-    x = RepeatVector(1)(x)
-    return x

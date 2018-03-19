@@ -1,4 +1,6 @@
-def inference_model(LSTM_cell, densor, n_x = 78, n_a = 64, Ty = 100):
+N_tones = 69
+
+def inference_model(LSTM_cell, densor, n_x = N_tones, n_a = 64, Ty = 100):
     """
     Uses the trained "LSTM_cell" and "densor" from model() to generate a sequence of values.
     
@@ -52,7 +54,7 @@ def inference_model(LSTM_cell, densor, n_x = 78, n_a = 64, Ty = 100):
 inference_model = inference_model(LSTM_cell, densor)
 
 
-x1 = np.zeros((1, 1, 78))
+x1 = np.zeros((1, 1, N_tones))
 x1[:,:,35] = 1
 a1 = np.zeros((1, n_a))
 c1 = np.zeros((1, n_a))
@@ -60,4 +62,4 @@ predicting = inference_model.predict([x1, a1, c1])
 
 
 indices = np.argmax(predicting, axis = -1)
-results = to_categorical(indices, num_classes=78)
+results = to_categorical(indices, num_classes=N_tones)
