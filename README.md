@@ -34,7 +34,7 @@ This is more of an exploration rather than a serious project.
     jupyter notebook
     ```
 
-5. Run the notebook `Classical Music Generation.ipynb`
+5. Run the notebook `Jazzy Haydn.ipynb`
 
 6. Get the result from `output/my_music.midi`
 
